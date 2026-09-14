@@ -20,7 +20,7 @@ def parser():
     p.add_argument('--output', type=Path, help='输出根目录，默认输入目录旁的“目录名_emotion”')
     p.add_argument('--model', choices=['base', 'plus-base', 'plus-large'], default='base')
     p.add_argument('--hub', choices=['hf'], default='hf', help='仅支持 Hugging Face（默认）')
-    p.add_argument('--model-dir', type=Path, help='本地模型目录，包含 config.yaml 和 model.pt；不联网下载')
+    p.add_argument('--model-dir', type=Path, help='本地模型目录，包含配置及 model.pt 或 emotion2vec_base.pt；不联网下载')
     p.add_argument('--revision', default='main', help='Hugging Face 模型版本或提交 ID')
     p.add_argument('--device', default='auto', help='auto / cpu / cuda:0')
     p.add_argument('--min-cluster-size', type=int, default=30)
@@ -139,9 +139,9 @@ def main(argv=None):
     model_id = 'emotion2vec/' + model_name
     model_identity = model_id + '@' + args.revision + ':standalone-v1'
     if args.model_dir:
+        from emotion_backend import local_model_files
         args.model_dir = args.model_dir.resolve()
-        for filename in ('config.yaml', 'model.pt'):
-            file = args.model_dir / filename
+        for file in local_model_files(args.model_dir):
             stat = file.stat()
             model_identity += f':{file}:{stat.st_size}:{stat.st_mtime_ns}'
     cache = output / '.cache' / model_name

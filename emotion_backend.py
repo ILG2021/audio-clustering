@@ -1,5 +1,43 @@
 """Standalone emotion2vec inference: PyTorch + local files / Hugging Face."""
 from pathlib import Path
+import json
+
+
+def model_filenames(root):
+    """Read the official file manifest; support older manually copied directories."""
+    root = Path(root)
+    manifest = root / 'configuration.json'
+    if manifest.is_file():
+        meta = json.loads(manifest.read_text(encoding='utf-8')).get('file_path_metas', {})
+        config_name = meta.get('config', 'config.yaml')
+        weight_name = meta.get('init_param', 'model.pt')
+    else:
+        config_name = 'config.yaml'
+        weight_name = 'model.pt' if (root / 'model.pt').is_file() else 'emotion2vec_base.pt'
+    for name in (config_name, weight_name):
+        if not isinstance(name, str) or Path(name).is_absolute() or '..' in Path(name).parts:
+            raise ValueError(f'模型配置包含无效文件路径：{name!r}')
+    return config_name, weight_name
+
+
+def local_model_files(root):
+    root = Path(root)
+    names = model_filenames(root)
+    missing = [name for name in names if not (root / name).is_file()]
+    if missing:
+        raise ValueError(f'模型目录缺少 {", ".join(missing)}：{root}')
+    return tuple(root / name for name in names)
+
+
+def download_model_files(model_id, revision):
+    from huggingface_hub import hf_hub_download
+    # Download explicit filenames so a missing file fails instead of silently
+    # producing an empty snapshot through allow_patterns.
+    manifest = Path(hf_hub_download(repo_id=model_id, revision=revision,
+                                    filename='configuration.json'))
+    names = model_filenames(manifest.parent)
+    return tuple(Path(hf_hub_download(repo_id=model_id, revision=revision, filename=name))
+                 for name in names)
 
 
 class EmotionEncoder:
@@ -8,15 +46,10 @@ class EmotionEncoder:
         from omegaconf import OmegaConf
         from emotion2vec_core.model import Emotion2vec
 
-        if model_dir is None:
-            from huggingface_hub import snapshot_download
-            model_dir = snapshot_download(repo_id=model_id, revision=revision,
-                                          allow_patterns=['config.yaml', 'model.pt'])
-        root = Path(model_dir)
-        if not all((root / name).is_file() for name in ('config.yaml', 'model.pt')):
-            raise ValueError(f'模型目录需要 config.yaml 和 model.pt：{root}')
-        config = OmegaConf.load(root / 'config.yaml')
-        state = torch.load(root / 'model.pt', map_location='cpu', weights_only=True)
+        config_path, weight_path = (download_model_files(model_id, revision) if model_dir is None
+                                    else local_model_files(model_dir))
+        config = OmegaConf.load(config_path)
+        state = torch.load(weight_path, map_location='cpu', weights_only=True)
         for key in ('state_dict', 'model_state_dict', 'model'):
             if key in state and isinstance(state[key], dict):
                 state = state[key]

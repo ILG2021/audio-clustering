@@ -57,7 +57,7 @@ audio_grouped/
 - 希望固定为 20 组：添加 `--clusters 20`，改用 K-Means。这会强制分组，没有“待复核”，不代表有 20 种真实情绪。
 - 对比 emotion2vec+ large：添加 `--model plus-large`。
 - 默认从 Hugging Face 下载；`--hub hf` 仅为兼容参数，不再支持 `--hub ms`。
-- 离线模型：添加 `--model-dir "D:\models\emotion2vec_base"`，目录需含官方 FunASR 格式的 `config.yaml` 和 `model.pt`，不调用模型下载接口。
+- 离线模型：添加 `--model-dir "D:\models\emotion2vec_base"`。原版需要 `config.yaml` 和 `emotion2vec_base.pt`，plus 系列需要 `config.yaml` 和 `model.pt`。保留 `configuration.json` 时优先按其文件映射加载；不调用模型下载接口。
 - 固定远程模型版本：添加 `--revision 提交ID`，默认为 main。
 - 只读取当前目录：添加 `--no-recursive`。
 - 强制 CPU：添加 `--device cpu`。
@@ -76,5 +76,7 @@ HDBSCAN 可能把很多文件甚至全部放入待复核，这是保留未归组
 模型接口参考：https://github.com/ddlBoJack/emotion2vec
 
 独立推理后端和旧版缓存隔离，首次升级会重新提取特征。
+
+如果旧版显示下载 0 B 后报缺少 model.pt，请更新 emotion_backend.py 和 cluster_audio.py 后重跑原命令。原版权重实际叫 emotion2vec_base.pt；新版根据 configuration.json 逐个下载所需文件，会复用已有缓存，无需删除整个 Hugging Face 缓存目录。
 
 当前验证：已通过合成特征的聚类/缓存/导出回归测试、FFmpeg 解码测试及源码依赖检查。独立后端尚未进行真实权重加载和推理测试；模型文件必须与所附网络结构兼容，权重严格匹配失败时会报错，不会使用随机参数继续处理。

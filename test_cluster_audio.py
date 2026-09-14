@@ -3,13 +3,39 @@ import csv
 import tempfile
 import unittest
 import wave
+import json
+import types
+from unittest.mock import patch
 from pathlib import Path
 
 import numpy as np
 import cluster_audio as app
+from emotion_backend import local_model_files, download_model_files
 
 
 class PipelineTests(unittest.TestCase):
+    def test_model_file_layouts_and_download(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'config.yaml').write_text('model_conf: {}')
+            (root / 'emotion2vec_base.pt').write_bytes(b'checkpoint')
+            self.assertEqual(local_model_files(root)[1].name, 'emotion2vec_base.pt')
+            manifest = {'file_path_metas': {'config': 'config.yaml', 'init_param': 'emotion2vec_base.pt'}}
+            (root / 'configuration.json').write_text(json.dumps(manifest))
+            calls = []
+            def download(**kwargs):
+                calls.append(kwargs)
+                return str(root / kwargs['filename'])
+            with patch.dict('sys.modules', {'huggingface_hub': types.SimpleNamespace(hf_hub_download=download)}):
+                self.assertEqual(download_model_files('emotion2vec/emotion2vec_base', 'main'), local_model_files(root))
+            self.assertEqual([c['filename'] for c in calls], ['configuration.json', 'config.yaml', 'emotion2vec_base.pt'])
+            manifest['file_path_metas']['init_param'] = 'model.pt'
+            (root / 'configuration.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'model.pt'):
+                local_model_files(root)
+            (root / 'model.pt').write_bytes(b'plus checkpoint')
+            self.assertEqual(local_model_files(root)[1].name, 'model.pt')
+
     def test_decode_and_window_coverage(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / '中文.wav'
